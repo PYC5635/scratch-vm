@@ -436,11 +436,15 @@ class Scratch3DataBlocks {
         if (!path || path.length === 0) return;
         // 确保路径上的每一级都是数组
         let cur = list.value;
-        if (!Array.isArray(cur)) { list.value = []; cur = list.value; }
+        if (!Array.isArray(cur)) {
+            list.value = []; cur = list.value;
+        }
         for (let i = 0; i < path.length - 1; i++) {
             const idx = path[i];
-            if (idx < 0 || idx >= cur.length) { cur.length = idx + 1; }
-            if (!Array.isArray(cur[idx])) cur[idx] = [];  // eslint-disable-line no-magic-numbers
+            if (idx < 0 || idx >= cur.length) {
+                cur.length = idx + 1;
+            }
+            if (!Array.isArray(cur[idx])) cur[idx] = []; // eslint-disable-line no-magic-numbers
             cur = cur[idx];
         }
         const last = path[path.length - 1];

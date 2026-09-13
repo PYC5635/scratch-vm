@@ -63,7 +63,7 @@ class Scratch3ProcedureBlocks {
 
         // PineEditor：在真正入栈调用前做递归护栏，抑制失控递归导致的栈溢出。
         if (!stackFrame.executed && this._guardRecursion(util)) {
-            return isReporter ? '' : undefined;
+            return isReporter ? '' : void 0;
         }
 
         const procedureCode = args.mutation.proccode;

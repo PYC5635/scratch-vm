@@ -27,7 +27,7 @@ const isListPayloadName = name => typeof name === 'string' && name.endsWith(LIST
  * @param {string} name
  * @return {string}
  */
-const stripListMarker = name => isListPayloadName(name) ? name.slice(0, -LIST_MARKER.length) : name;
+const stripListMarker = name => (isListPayloadName(name) ? name.slice(0, -LIST_MARKER.length) : name);
 
 /**
  * 生成一个列表对应的云载荷变量名。

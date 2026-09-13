@@ -45,7 +45,7 @@ const BLOCK_COMPLEXITY_HINTS = {
     procedures_call: {weight: 3},
     procedures_definition: {weight: 1},
     // 重复执行自身（旧式 CALL 命名的变体）
-    'procedures_CALL': {weight: 3},
+    procedures_CALL: {weight: 3},
     // 事件循环
     event_whenbroadcastreceived: {weight: 2},
     control_start_as_clone: {weight: 2}
@@ -263,11 +263,11 @@ class PerfAnalyzer {
         const drawables = options.drawables || 0;
         const fpsBudget = 16.6667;
         // 基础负载来自帧耗时占预算的比例
-        let load = frameMs > 0 ? Math.min(1, frameMs / fpsBudget) : 0;
+        const load = frameMs > 0 ? Math.min(1, frameMs / fpsBudget) : 0;
         // drawable 越多，顶点/片元负载越高（近似线性，超过约 300 个 drawable 基本满载）
         const drawFactor = Math.min(1, drawables / 300);
         // time 负载权重 0.65，drawable 权重 0.35
-        const gpu = load * 0.65 + drawFactor * 0.35;
+        const gpu = (load * 0.65) + (drawFactor * 0.35);
         return Math.max(0, Math.min(100, Math.round(gpu * 100)));
     }
 
@@ -276,7 +276,13 @@ class PerfAnalyzer {
      * 遍历以 startId 为入口的积木图（含并列下个积木、分支子堆、循环子堆、过程调用）。
      * @param {object} blocks Scratch 原始 blocks 对象（{id: block}）。
      * @param {string} startId 脚本的入口积木 id。
-     * @return {{score: number, hotBlocks: Array<{id: string, opcode: string, weight: number}>, loops: number, branches: number, calls: number}}
+     * @return {{
+     *     score: number,
+     *     hotBlocks: Array<{id: string, opcode: string, weight: number}>,
+     *     loops: number,
+     *     branches: number,
+     *     calls: number
+     * }}
      */
     computeComplexity (blocks, startId) {
         const result = {
@@ -382,8 +388,8 @@ class PerfAnalyzer {
         const fps = this.frames > 0 && this.frames / (this.windowMs / 1000) ?
             Math.round(this.frames / Math.max(1, this.windowMs / 1000)) : 0;
         const avgDrawables = this.frames > 0 ? Math.round(this.drawableTotal / this.frames) : 0;
-        const gpuLoad = this.lastGpuLoad !== null ? this.lastGpuLoad :
-            this.estimateGpu({frameMs: avgFrame, drawables: avgDrawables});
+        const gpuLoad = this.lastGpuLoad === null ?
+            this.estimateGpu({frameMs: avgFrame, drawables: avgDrawables}) : this.lastGpuLoad;
 
         return {
             enabled: this.enabled,
