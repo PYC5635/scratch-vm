@@ -1,0 +1,531 @@
+const test = require('tap').test;
+const path = require('path');
+const VirtualMachine = require('../../src/index');
+const Runtime = require('../../src/engine/runtime');
+const sb3 = require('../../src/serialization/sb3');
+const readFileToBuffer = require('../fixtures/readProjectFile').readFileToBuffer;
+const exampleProjectPath = path.resolve(__dirname, '../fixtures/clone-cleanup.sb2');
+const commentsSB2ProjectPath = path.resolve(__dirname, '../fixtures/comments.sb2');
+const commentsSB3ProjectPath = path.resolve(__dirname, '../fixtures/comments.sb3');
+const commentsSB3NoDupeIds = path.resolve(__dirname, '../fixtures/comments_no_duplicate_id_serialization.sb3');
+const variableReporterSB2ProjectPath = path.resolve(__dirname, '../fixtures/top-level-variable-reporter.sb2');
+const topLevelReportersProjectPath = path.resolve(__dirname, '../fixtures/top-level-reporters.sb3');
+const draggableSB3ProjectPath = path.resolve(__dirname, '../fixtures/draggable.sb3');
+const originSB3ProjectPath = path.resolve(__dirname, '../fixtures/origin.sb3');
+const originAbsentSB3ProjectPath = path.resolve(__dirname, '../fixtures/origin-absent.sb3');
+const FakeRenderer = require('../fixtures/fake-renderer');
+
+test('serialize', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(exampleProjectPath))
+        .then(() => {
+            const result = sb3.serialize(vm.runtime);
+            // @todo Analyze
+            t.type(JSON.stringify(result), 'string');
+            t.end();
+        });
+});
+
+test('deserialize', t => {
+    const vm = new VirtualMachine();
+    sb3.deserialize('', vm.runtime).then(({targets}) => {
+        // @todo Analyze
+        t.type(targets, 'object');
+        t.end();
+    });
+});
+
+
+test('serialize sb2 project with comments as sb3', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB2ProjectPath))
+        .then(() => {
+            const result = sb3.serialize(vm.runtime);
+
+            t.type(JSON.stringify(result), 'string');
+            t.type(result.targets, 'object');
+            t.equal(Array.isArray(result.targets), true);
+            t.equal(result.targets.length, 2);
+
+            const stage = result.targets[0];
+            t.equal(stage.isStage, true);
+            // The stage has 0 blocks, and 1 workspace comment
+            t.type(stage.blocks, 'object');
+            t.equal(Object.keys(stage.blocks).length, 0);
+            t.type(stage.comments, 'object');
+            t.equal(Object.keys(stage.comments).length, 1);
+            const stageBlockComments = Object.values(stage.comments).filter(comment => !!comment.blockId);
+            const stageWorkspaceComments = Object.values(stage.comments).filter(comment => comment.blockId === null);
+            t.equal(stageBlockComments.length, 0);
+            t.equal(stageWorkspaceComments.length, 1);
+
+            const sprite = result.targets[1];
+            t.equal(sprite.isStage, false);
+            t.type(sprite.blocks, 'object');
+            // Sprite 1 has 6 blocks, 5 block comments, and 1 workspace comment
+            t.equal(Object.keys(sprite.blocks).length, 6);
+            t.type(sprite.comments, 'object');
+            t.equal(Object.keys(sprite.comments).length, 6);
+
+            const spriteBlockComments = Object.values(sprite.comments).filter(comment => !!comment.blockId);
+            const spriteWorkspaceComments = Object.values(sprite.comments).filter(comment => comment.blockId === null);
+            t.equal(spriteBlockComments.length, 5);
+            t.equal(spriteWorkspaceComments.length, 1);
+
+            t.end();
+        });
+});
+
+test('deserialize sb3 project with comments', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB3ProjectPath))
+        .then(() => {
+            const runtime = vm.runtime;
+
+            t.type(runtime.targets, 'object');
+            t.equal(Array.isArray(runtime.targets), true);
+            t.equal(runtime.targets.length, 2);
+
+            const stage = runtime.targets[0];
+            t.equal(stage.isStage, true);
+            // The stage has 0 blocks, and 1 workspace comment
+            t.type(stage.blocks, 'object');
+            t.equal(Object.keys(stage.blocks._blocks).length, 0);
+            t.type(stage.comments, 'object');
+            t.equal(Object.keys(stage.comments).length, 1);
+            const stageBlockComments = Object.values(stage.comments).filter(comment => !!comment.blockId);
+            const stageWorkspaceComments = Object.values(stage.comments).filter(comment => comment.blockId === null);
+            t.equal(stageBlockComments.length, 0);
+            t.equal(stageWorkspaceComments.length, 1);
+
+            const sprite = runtime.targets[1];
+            t.equal(sprite.isStage, false);
+            t.type(sprite.blocks, 'object');
+            // Sprite 1 has 6 blocks, 5 block comments, and 1 workspace comment
+            t.equal(Object.values(sprite.blocks._blocks).filter(block => !block.shadow).length, 6);
+            t.type(sprite.comments, 'object');
+            t.equal(Object.keys(sprite.comments).length, 6);
+
+            const spriteBlockComments = Object.values(sprite.comments).filter(comment => !!comment.blockId);
+            const spriteWorkspaceComments = Object.values(sprite.comments).filter(comment => comment.blockId === null);
+            t.equal(spriteBlockComments.length, 5);
+            t.equal(spriteWorkspaceComments.length, 1);
+
+            t.end();
+        });
+});
+
+test('deserialize sb3 project with comments - no duplicate id serialization', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB3NoDupeIds))
+        .then(() => {
+            const runtime = vm.runtime;
+
+            t.type(runtime.targets, 'object');
+            t.equal(Array.isArray(runtime.targets), true);
+            t.equal(runtime.targets.length, 2);
+
+            const stage = runtime.targets[0];
+            t.equal(stage.isStage, true);
+            // The stage has 0 blocks, and 0 workspace comment
+            t.type(stage.blocks, 'object');
+            t.equal(Object.keys(stage.blocks._blocks).length, 0);
+            t.type(stage.comments, 'object');
+            t.equal(Object.keys(stage.comments).length, 0);
+
+            const sprite = runtime.targets[1];
+            t.equal(sprite.isStage, false);
+            t.type(sprite.blocks, 'object');
+            // Sprite1 has 1 blocks, 1 block comment, and 1 workspace comment
+            t.equal(Object.values(sprite.blocks._blocks).filter(block => !block.shadow).length, 1);
+            t.type(sprite.comments, 'object');
+            t.equal(Object.keys(sprite.comments).length, 2);
+
+            const spriteBlockComments = Object.values(sprite.comments).filter(comment => !!comment.blockId);
+            const spriteWorkspaceComments = Object.values(sprite.comments).filter(comment => comment.blockId === null);
+            t.equal(spriteBlockComments.length, 1);
+            t.equal(spriteWorkspaceComments.length, 1);
+
+            t.end();
+        });
+});
+
+test('serializing and deserializing sb3 preserves sprite layer order', t => {
+    const vm = new VirtualMachine();
+    vm.attachRenderer(new FakeRenderer());
+    return vm.loadProject(readFileToBuffer(path.resolve(__dirname, '../fixtures/ordering.sb2')))
+        .then(() => {
+            // Target get layer order needs a renderer,
+            // fake the numbers we would get back from the
+            // renderer in order to test that they are serialized
+            // correctly
+            vm.runtime.targets[0].getLayerOrder = () => 0;
+            vm.runtime.targets[1].getLayerOrder = () => 20;
+            vm.runtime.targets[2].getLayerOrder = () => 10;
+            vm.runtime.targets[3].getLayerOrder = () => 30;
+
+            const result = sb3.serialize(vm.runtime);
+
+            t.type(JSON.stringify(result), 'string');
+            t.type(result.targets, 'object');
+            t.equal(Array.isArray(result.targets), true);
+            t.equal(result.targets.length, 4);
+
+            // First check that the sprites are ordered correctly (as they would
+            // appear in the target pane)
+            t.equal(result.targets[0].name, 'Stage');
+            t.equal(result.targets[1].name, 'First');
+            t.equal(result.targets[2].name, 'Second');
+            t.equal(result.targets[3].name, 'Third');
+
+            // Check that they are in the correct layer order (as they would render
+            // back to front on the stage)
+            t.equal(result.targets[0].layerOrder, 0);
+            t.equal(result.targets[1].layerOrder, 2);
+            t.equal(result.targets[2].layerOrder, 1);
+            t.equal(result.targets[3].layerOrder, 3);
+
+            return result;
+        })
+        .then(serializedObject =>
+            sb3.deserialize(
+                JSON.parse(JSON.stringify(serializedObject)), new Runtime(), null, false)
+                .then(({targets}) => {
+                    // First check that the sprites are ordered correctly (as they would
+                    // appear in the target pane)
+                    t.equal(targets[0].sprite.name, 'Stage');
+                    t.equal(targets[1].sprite.name, 'First');
+                    t.equal(targets[2].sprite.name, 'Second');
+                    t.equal(targets[3].sprite.name, 'Third');
+
+                    // Check that they are in the correct layer order (as they would render
+                    // back to front on the stage)
+                    t.equal(targets[0].layerOrder, 0);
+                    t.equal(targets[1].layerOrder, 2);
+                    t.equal(targets[2].layerOrder, 1);
+                    t.equal(targets[3].layerOrder, 3);
+
+                    t.end();
+                }));
+});
+
+test('serializeBlocks', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB3ProjectPath))
+        .then(() => {
+            const blocks = vm.runtime.targets[1].blocks._blocks;
+            const result = sb3.serializeBlocks(blocks);
+            // @todo Analyze
+            t.type(result[0], 'object');
+            t.ok(Object.keys(result[0]).length < Object.keys(blocks).length, 'less blocks in serialized format');
+            t.ok(Array.isArray(result[1]));
+            t.end();
+        });
+});
+
+test('serializeBlocks serializes x and y for topLevel blocks with x,y of 0,0', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(topLevelReportersProjectPath))
+        .then(() => {
+            // Verify that there are 2 blocks and they are both top level
+            const blocks = vm.runtime.targets[1].blocks._blocks;
+            const blockIds = Object.keys(blocks);
+            t.equal(blockIds.length, 2);
+            const blocksArray = blockIds.map(key => blocks[key]);
+            t.equal(blocksArray.every(b => b.topLevel), true);
+            // Simulate cleaning up the blocks by resetting x and y positions to 0
+            blockIds.forEach(blockId => {
+                blocks[blockId].x = 0;
+                blocks[blockId].y = 0;
+            });
+            const result = sb3.serializeBlocks(blocks);
+            const serializedBlocks = result[0];
+
+            t.type(serializedBlocks, 'object');
+            const serializedBlockIds = Object.keys(serializedBlocks);
+            t.equal(serializedBlockIds.length, 2);
+            const firstBlock = serializedBlocks[serializedBlockIds[0]];
+            const secondBlock = serializedBlocks[serializedBlockIds[1]];
+            t.equal(firstBlock.x, 0);
+            t.equal(firstBlock.y, 0);
+            t.equal(secondBlock.x, 0);
+            t.equal(secondBlock.y, 0);
+
+            t.end();
+        });
+});
+
+test('deserializeBlocks', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB3ProjectPath))
+        .then(() => {
+            const blocks = vm.runtime.targets[1].blocks._blocks;
+            const serialized = sb3.serializeBlocks(blocks)[0];
+            const deserialized = sb3.deserializeBlocks(serialized);
+            t.equal(Object.keys(deserialized).length, Object.keys(blocks).length, 'same number of blocks');
+            t.end();
+        });
+});
+
+test('empty not blocks become Boolean toggles only while loading', t => {
+    const serialized = {
+        parent: {
+            opcode: 'control_if',
+            next: null,
+            parent: null,
+            inputs: {CONDITION: [2, 'not']},
+            fields: {},
+            shadow: false,
+            topLevel: true,
+            x: 0,
+            y: 0
+        },
+        not: {
+            opcode: 'operator_not',
+            next: null,
+            parent: 'parent',
+            inputs: {},
+            fields: {},
+            shadow: false,
+            topLevel: false
+        }
+    };
+    const blocks = sb3.deserializeBlocks(serialized);
+
+    t.equal(blocks.not.booleanToggle, true);
+    t.match(blocks.parent.inputs.CONDITION, {block: 'not', shadow: null});
+
+    const saved = sb3.serializeBlocks(blocks)[0];
+    t.equal(saved.not.opcode, 'operator_not');
+    t.notOk(Object.prototype.hasOwnProperty.call(saved.not, 'booleanToggle'));
+    t.end();
+});
+
+test('deserializeBlocks on already deserialized input', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(commentsSB3ProjectPath))
+        .then(() => {
+            const blocks = vm.runtime.targets[1].blocks._blocks;
+            const serialized = sb3.serializeBlocks(blocks)[0];
+            const deserialized = sb3.deserializeBlocks(serialized);
+            const deserializedAgain = sb3.deserializeBlocks(deserialized);
+            t.deepEqual(deserialized, deserializedAgain, 'no change from second pass of deserialize');
+            t.end();
+        });
+});
+
+test('getExtensionIdForOpcode', t => {
+    t.equal(sb3.getExtensionIdForOpcode('wedo_loopy'), 'wedo');
+
+    // does not consider CORE to be extensions
+    t.false(sb3.getExtensionIdForOpcode('control_loopy'));
+
+    // only considers things before the first underscore
+    t.equal(sb3.getExtensionIdForOpcode('hello_there_loopy'), 'hello');
+
+    // does not return anything for opcodes with no extension
+    t.false(sb3.getExtensionIdForOpcode('hello'));
+
+    // forbidden characters must be replaced with '-'
+    t.equal(sb3.getExtensionIdForOpcode('hi:there/happy_people'), 'hi-there-happy');
+
+    t.end();
+});
+
+test('(#1608) serializeBlocks maintains top level variable reporters', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(variableReporterSB2ProjectPath))
+        .then(() => {
+            const blocks = vm.runtime.targets[0].blocks._blocks;
+            const result = sb3.serialize(vm.runtime);
+            // Project should have 1 block, a top-level variable reporter
+            t.equal(Object.keys(blocks).length, 1);
+            t.equal(Object.keys(result.targets[0].blocks).length, 1);
+
+            // Make sure deserializing these blocks works
+            t.doesNotThrow(() => {
+                sb3.deserialize(JSON.parse(JSON.stringify(result)), vm.runtime);
+            });
+            t.end();
+        });
+});
+
+test('(#1850) sprite draggability state read when loading SB3 file', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(draggableSB3ProjectPath))
+        .then(() => {
+            const sprite1Obj = vm.runtime.targets.find(target => target.sprite.name === 'Sprite1');
+            // Sprite1 in project should have draggable set to true
+            t.equal(sprite1Obj.draggable, true);
+            t.end();
+        });
+});
+
+test('load origin value from SB3 file json metadata', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(originSB3ProjectPath))
+        .then(() => {
+            t.type(vm.runtime.origin, 'string');
+        })
+        .then(() => vm.loadProject(readFileToBuffer(originAbsentSB3ProjectPath)))
+        .then(() => {
+            // After loading a project with an origin, then loading one without an origin,
+            // origin value should no longer be set.
+            t.equal(vm.runtime.origin, null);
+            t.end();
+        });
+});
+
+test('serialize origin value if it is present', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(originSB3ProjectPath))
+        .then(() => {
+            const result = sb3.serialize(vm.runtime);
+            t.type(result.meta.origin, 'string');
+            t.end();
+        });
+});
+
+test('do not serialize origin value if it is not present', t => {
+    const vm = new VirtualMachine();
+    vm.loadProject(readFileToBuffer(originAbsentSB3ProjectPath))
+        .then(() => {
+            const result = sb3.serialize(vm.runtime);
+            t.equal(result.meta.origin, undefined);
+            t.end();
+        });
+});
+
+// Nested same-opcode operators (e.g. ((a+b)+c)+d) are merged into one variadic block on load
+// (collapseOperators) and rebuilt on save (expandOperators). When the user typed a value into a
+// slot and then dropped a reporter on top of it, that "obscured" shadow has no place in the merged
+// block and must be set aside and restored, or the value is lost on the next save. This also has to
+// work regardless of the order blocks appear in the project and at every nesting depth.
+const buildNestedAddChain = (depth, order) => {
+    const blocks = {};
+    let childId = null;
+    for (let i = 0; i < depth; i++) {
+        const id = `op${i}`;
+        const headShadow = `hs${i}`;
+        const tailShadow = `ts${i}`;
+        blocks[headShadow] = {opcode: 'math_number', next: null, parent: id, inputs: {},
+            fields: {NUM: [String(90 + i), null]}, shadow: true, topLevel: false};
+        blocks[tailShadow] = {opcode: 'math_number', next: null, parent: id, inputs: {},
+            fields: {NUM: [String(200 + i), null]}, shadow: true, topLevel: false};
+        blocks[id] = {opcode: 'operator_add', next: null, parent: null, inputs: {
+            NUM1: childId ? [3, childId, headShadow] : [1, headShadow],
+            NUM2: [1, tailShadow]
+        }, fields: {}, shadow: false, topLevel: false};
+        if (childId) blocks[childId].parent = id;
+        childId = id;
+    }
+    blocks.hat = {opcode: 'event_whenflagclicked', next: 'say', parent: null, inputs: {},
+        fields: {}, shadow: false, topLevel: true, x: 0, y: 0};
+    blocks.say = {opcode: 'looks_say', next: null, parent: 'hat',
+        inputs: {MESSAGE: [3, childId, [10, '']]}, fields: {}, shadow: false, topLevel: false};
+    blocks[childId].parent = 'say';
+    const keys = order ? order(Object.keys(blocks)) : Object.keys(blocks);
+    const ordered = {};
+    for (const k of keys) ordered[k] = blocks[k];
+    return {
+        targets: [
+            {isStage: true, name: 'Stage', variables: {}, lists: {}, broadcasts: {}, blocks: {},
+                comments: {}, currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 0,
+                tempo: 60, videoTransparency: 50, videoState: 'off', textToSpeechLanguage: null},
+            {isStage: false, name: 'Sprite1', variables: {}, lists: {}, broadcasts: {}, blocks: ordered,
+                comments: {}, currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 1,
+                visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false,
+                rotationStyle: 'all around'}
+        ], monitors: [], extensions: [], meta: {semver: '3.0.0', vm: '0.2.0', agent: ''}
+    };
+};
+
+test('extendable operators preserve obscured shadows across a load/save round trip', t => {
+    const orderings = [
+        keys => keys,
+        keys => [...keys].reverse(),
+        keys => [...keys].sort(),
+        keys => [...keys].sort().reverse()
+    ];
+    const runtime = new Runtime();
+    runtime.extendableOperators = true;
+    const checkDepth = async (depth, order) => {
+        const project = buildNestedAddChain(depth, order);
+        const {targets} = await sb3.deserialize(JSON.parse(JSON.stringify(project)), runtime);
+        for (const target of targets) runtime.addTarget(target);
+        const raw = JSON.stringify(sb3.serialize(runtime).targets[1].blocks);
+        for (const target of targets) runtime.disposeTarget(target);
+        for (let i = 0; i < depth; i++) {
+            t.ok(raw.includes(`"${90 + i}"`), `depth ${depth}: obscured/head shadow ${90 + i} preserved`);
+            t.ok(raw.includes(`"${200 + i}"`), `depth ${depth}: tail shadow ${200 + i} preserved`);
+        }
+        // The internal bookkeeping annotation must never leak into the saved project.
+        t.notOk(raw.includes('obscuredHeadShadows'), `depth ${depth}: annotation not serialized`);
+    };
+    (async () => {
+        for (const depth of [2, 3, 4, 5, 6]) {
+            for (const order of orderings) {
+                await checkDepth(depth, order);
+            }
+        }
+        t.end();
+    })();
+});
+
+// pi/newline have no vanilla opcode, so they are saved as stage variables holding their value and
+// turned back into blocks on load.
+const buildConstantsProject = () => ({
+    targets: [
+        {isStage: true, name: 'Stage', variables: {}, lists: {}, broadcasts: {}, blocks: {},
+            comments: {}, currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 0,
+            tempo: 60, videoTransparency: 50, videoState: 'off', textToSpeechLanguage: null},
+        {isStage: false, name: 'Sprite1', variables: {}, lists: {}, broadcasts: {}, blocks: {
+            hat: {opcode: 'event_whenflagclicked', next: 'say', parent: null, inputs: {},
+                fields: {}, shadow: false, topLevel: true, x: 0, y: 0},
+            say: {opcode: 'looks_say', next: null, parent: 'hat',
+                inputs: {MESSAGE: [3, 'join', [10, '']]}, fields: {}, shadow: false, topLevel: false},
+            join: {opcode: 'operator_join', next: null, parent: 'say',
+                inputs: {STRING1: [3, 'pi', [10, 'a']], STRING2: [3, 'newline', [10, 'b']]},
+                fields: {}, shadow: false, topLevel: false},
+            pi: {opcode: 'operator_pi', next: null, parent: 'join', inputs: {}, fields: {},
+                shadow: false, topLevel: false},
+            newline: {opcode: 'operator_newline', next: null, parent: 'join', inputs: {}, fields: {},
+                shadow: false, topLevel: false}
+        }, comments: {}, currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 1,
+        visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false,
+        rotationStyle: 'all around'}
+    ], monitors: [], extensions: [], meta: {semver: '3.0.0', vm: '0.2.0', agent: ''}
+});
+
+test('pi and newline round trip through stage variables', t => {
+    const runtime = new Runtime();
+    (async () => {
+        const {targets} = await sb3.deserialize(buildConstantsProject(), runtime);
+        for (const target of targets) runtime.addTarget(target);
+
+        const saved = sb3.serialize(runtime);
+        const stage = saved.targets.find(target => target.isStage);
+        t.same(stage.variables['bilup.pi'], ['bilup.pi', Math.PI], 'pi saved as a stage variable');
+        t.same(stage.variables['bilup.newline'], ['bilup.newline', '\n'], 'newline saved as a stage variable');
+
+        const savedBlocks = saved.targets[1].blocks;
+        const opcodes = Object.values(savedBlocks).map(block => block.opcode);
+        t.notOk(opcodes.includes('operator_pi'), 'no operator_pi block saved');
+        t.notOk(opcodes.includes('operator_newline'), 'no operator_newline block saved');
+        const join = Object.values(savedBlocks).find(block => block.opcode === 'operator_join');
+        t.same(join.inputs.STRING1[1], [12, 'bilup.pi', 'bilup.pi'], 'pi is a variable reporter');
+        t.same(join.inputs.STRING2[1], [12, 'bilup.newline', 'bilup.newline'], 'newline is a variable reporter');
+
+        for (const target of targets) runtime.disposeTarget(target);
+
+        const reloadRuntime = new Runtime();
+        const reloaded = await sb3.deserialize(JSON.parse(JSON.stringify(saved)), reloadRuntime);
+        const reloadedStage = reloaded.targets.find(target => target.isStage);
+        t.same(Object.keys(reloadedStage.variables), [], 'constant variables are not recreated on load');
+        const reloadedOpcodes = Object.values(reloaded.targets[1].blocks._blocks).map(block => block.opcode);
+        t.ok(reloadedOpcodes.includes('operator_pi'), 'pi block restored');
+        t.ok(reloadedOpcodes.includes('operator_newline'), 'newline block restored');
+        t.notOk(reloadedOpcodes.includes('data_variable'), 'no leftover variable reporters');
+        t.end();
+    })();
+});
